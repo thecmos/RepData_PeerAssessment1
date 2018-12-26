@@ -1,25 +1,146 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Activity"
+author: "Javier Lores"
+date: "December 24th, 2018"
+output: html_document
 ---
 
+##Coursera assignment, week2, Reproducible Research
 
-## Loading and preprocessing the data
+Loading and preprocessing the data
+
+Load libraries
+```{r libraries}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(stringr)
+library(markdown)
+library(knitr)
+```
+Import the data
+```{r read data}
+act<-read.csv("activity.csv")
+```
+Change date's class to Date and inspect the table
+```{r date class}
+actv<-transform(act,date=as.Date(date))
+str(actv)
+```
+
+###Question 1: What is the mean total number of steps taken per day?
+Ignoring NAs, as required, calculate the total number of daily steps and inspect the new table
+```{r daily steps}
+actv_d<-summarize(group_by(actv,date),totsteps=sum(steps))
+str(actv_d)
+```
+Plot the histogram for daily steps
+```{r histogram daily steps}
+g<-ggplot(actv_d,aes(totsteps))
+g+geom_histogram()  
+```
+
+
+Calculate mean and median of daily steps and inspect table
+```{r }
+actv_dm<-summarize(actv_d,mean=mean(totsteps,na.rm=T),median=median(totsteps,na.rm=T))
+```
+Print the mean
+```{r mean}
+print(formatC(as.numeric(actv_dm[,1]),format="f",digits=1,big.mark=","))
+```
+Print the median
+```{r median}
+print(formatC(as.numeric(actv_dm[,2]),format="f",digits=1,big.mark=","))
+```
+
+###Question 2: What is the average daily activity pattern?
+Calculate the average number of steps taken at each 5 minute interval across all days, and inspect the table
+```{r avg steps by interval}
+actv_i<-summarize(group_by(actv,interval),avesteps=mean(steps,na.rm=T))
+str(actv_i)
+```
+Plot the average daily activity, taking the opportunity to show on the plot which 5 mins interval is the most active on average (interval=835) and the average number of steps (avgsteps=206.2) as lines cutting both axes
+```{r plot avg daily actv}
+h<-ggplot(actv_i,aes(interval,avesteps))+geom_line()+geom_vline(xintercept=filter(actv_i,avesteps==max(avesteps))$interval,linetype="dashed",color="violet")+scale_x_continuous(expand = c(0, 0),breaks= c(seq(min(actv_i$interval),max(actv_i$interval),by=500), filter(actv_i,avesteps==max(avesteps))$interval))+geom_hline(yintercept=max(actv_i$avesteps),linetype="dashed",color="violet")+scale_y_continuous(labels=scales::comma_format(accuracy=0.1), expand = c(0, 0),breaks= c(seq(min(actv_i$avesteps),max(actv_i$avesteps),by=25),max(actv_i$avesteps)))+theme_bw()+theme(axis.line = element_line(colour = "blue"), panel.border = element_blank())
+print(h)
+```
+
+###Question 3: Imputing missing values
+Compute the number of rows with NAs, and inspect
+```{r NAs}
+inc<-actv[!complete.cases(actv),]
+dim(inc)
+```
+
+There is a total of 2,304 rows with NAs
+
+Fill the missing values in the data set
+
+The strategy to fill the NAs will be to replace NAs with the mean for that 5 minutes interval already calculated and stored in actv_i. 
+Create a new dataset that is equal to the original data set but with the missing data filled in with a loop. I prefer to create a new variable "stf"" with all old existing and newly filled values, instead of rewriting the old variable "steps""
+```{r fill NAs}
+for(j in 1:nrow(actv)){
+actv$stf[j]<-ifelse(is.na(actv$steps[j])==TRUE,filter(actv_i,interval==actv$interval[j])$avesteps,actv$steps[j])
+}
+```
+Check that the new actv table has indeed no NAs in the new variable stf.
+```{r checkn no NAs}
+length(actv$stf[is.na(actv$stf)])
+```
+
+Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+Calculate the new total number of steps, and inspect the new table
+```{r totsteps}
+actv_d<-summarize(group_by(actv,date),totsteps=sum(stf))
+str(actv_d)
+```
+Histogram of new calculated steps variable
+```{r new hist}
+g<-ggplot(actv_d,aes(totsteps))
+g+geom_histogram()
+```
+
+
+Calculate again mean and median of total daily steps. Obviously, no need to pass na.rm=T this time
+``` {r mean and median}
+actv_dm<-summarize(actv_d,mean=mean(totsteps),median=median(totsteps))
+```
+Print the new mean
+```{r print mean}
+print(formatC(as.numeric(actv_dm[,1]),format="f",digits=1,big.mark=","))
+```
+Print the new median
+```{r print median}
+print(formatC(as.numeric(actv_dm[,2]),format="f",digits=1,big.mark=","))
+```
+There is not a big impact as far as the shape of the histogram is concerned. However, the frequency for the median value is higher, as seen from the different y scales of the two histograms. From the calculated values we see that mean and median are now equal. It must be a consequence of the filling strategy followed.
+
+###Question 4: Are there differences in activity patterns between weekdays and weekends?
+
+The new factor to discriminate weekends and weekdays will be called "day". Since my computer is set for **Spanish language** the selection will be based on the Spanish names of the weekend days. This time I do not need to use a loop.
+Important to remember that the old variable "steps"" still contains NAs, and the new variable **"stf"** is the result of the replacement strategy
+```{r weekdays}
+wend<-c("sábado","domingo")
+actv<-mutate(actv,day=as.factor(ifelse(weekdays(actv$date)%in%wend==TRUE,"weekend","weekday")))
+str(actv)
+```
+
+Make a panel plot containing a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).
+
+Calculate the average number of steps by interval across all days and split by the category weekend/weekday. Inspect the new table
+```{r avesteps}
+actv_w<-summarize(group_by(actv,day,interval),avesteps=mean(stf))
+str(actv_w)
+```
+Plot the time series
+```{r plot time series}
+l<-ggplot(actv_w,aes(interval,avesteps))+geom_line()+facet_wrap(day~.,strip.position="top",ncol=1)+labs(y="Number of steps",x="Interval")
+print(l)
+```
 
 
 
-## What is mean total number of steps taken per day?
 
 
 
-## What is the average daily activity pattern?
-
-
-
-## Imputing missing values
-
-
-
-## Are there differences in activity patterns between weekdays and weekends?
